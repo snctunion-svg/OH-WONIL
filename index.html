@@ -359,8 +359,8 @@ function renderEdit(){
 function renderToPop(){
   const el = $('toPop'); if(!toPop){ if(el) el.remove(); return; }
   const body = isUnion
-    ? `<div class="hint">위원장 스케줄 엑셀(.xlsm)의 '일정' 시트(날짜·타임오프·스케줄·비고)를 가져와요. 다시 가져오면 새 엑셀 내용으로 바뀌어요.</div>
-       <div class="btns"><button type="button" class="pri" id="toPick">📂 엑셀 가져오기</button><button type="button" id="toOut">로그아웃</button></div>`
+    ? `<div class="hint">로그인되어 있어요. TIME OFF 탭에서 PC와 같은 자료를 볼 수 있어요.</div>
+       <div class="btns"><button type="button" id="toOut">로그아웃</button></div>`
     : `<div class="hint">TIME OFF는 UNION만 볼 수 있어요. UNION 비밀번호를 넣어 주세요.</div>
        <input type="password" id="toPw" autocomplete="current-password" placeholder="UNION 비밀번호">
        <div class="btns"><button type="button" class="pri" id="toLogin">로그인</button></div>`;
@@ -371,7 +371,6 @@ function renderToPop(){
   const close = ()=>{ toPop = false; toMsg = ''; renderToPop(); };
   $('toX').onclick = close; $('toScrim').onclick = e=>{ if(e.target.id==='toScrim') close(); };
   if(isUnion){
-    $('toPick').onclick = ()=> $('toFile').click();
     $('toOut').onclick = async ()=>{ try{ await A.signOut(auth); }catch(e){} close(); };
   } else {
     const go = async ()=>{ const pw = $('toPw').value; if(!pw) return; toMsg = '로그인 중…'; toOk = true; renderToPop();
@@ -443,7 +442,7 @@ render();
 try{
   const [Ap, Fm, Au] = await Promise.all([import(SDK + 'firebase-app.js'), import(SDK + 'firebase-firestore.js'), import(SDK + 'firebase-auth.js')]);
   const app = Ap.initializeApp(CFG); F = Fm; fs = Fm.getFirestore(app); A = Au; auth = Au.getAuth(app);
-  Au.onAuthStateChanged(auth, u=>{ isUnion = !!(u && String(u.email||'').toLowerCase()===UNION_EMAIL); toWatch(); if(toPop) renderToPop(); });   // UNION 사이트에서 로그인해 두었으면(같은 주소) 그대로 로그인 상태
+  Au.onAuthStateChanged(auth, u=>{ isUnion = !!(u && String(u.email||'').toLowerCase()===UNION_EMAIL); toWatch(); if(toPop){ if(isUnion){ toPop = false; toMsg = ''; view = 'sheet'; try{ localStorage.setItem('ohwonil_view', 'sheet'); }catch(e){} render(); } renderToPop(); } });   // 로그인되면 팝업 닫고 TIME OFF(클라우드 자료) 바로 보여 줌   // UNION 사이트에서 로그인해 두었으면(같은 주소) 그대로 로그인 상태
   Fm.onSnapshot(Fm.collection(fs, 'holidays'), snap=>{ const h = {}; snap.forEach(d=>{ const v = d.data(); if(v && v.date) h[v.date] = v.name; }); holidays = h; render(); }, ()=>{});
   render();
 }catch(e){ live(false); $('err').innerHTML = '<div class="err">인터넷 연결을 확인해 주세요.</div>'; }
