@@ -77,8 +77,11 @@ main{max-width:1200px;margin:0 auto;padding:14px 16px calc(24px + env(safe-area-
 .card.neg .v{color:#dc2626;} .card.pos .v{color:#15803d;}
 .bar2{height:10px;border-radius:5px;background:var(--line);overflow:hidden;} .bar2 i{display:block;height:100%;background:#0ea5e9;}
 .bar2.over i{background:#dc2626;}
-.tblWrap{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
-table.tt{width:100%;border-collapse:collapse;font-size:13.5px;}
+.tblWrap{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;max-height:max(320px, calc(100dvh - 330px));}
+table.tt{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;table-layout:fixed;}
+.tt td{overflow-wrap:anywhere;}
+.tt thead th{position:sticky;top:0;z-index:3;}
+.tt tfoot td{position:sticky;bottom:0;z-index:3;border-top:1px solid #7dd3fc;}
 .tt th{background:#f0f9ff;color:#075985;font-weight:800;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;}
 .tt td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
 .tt td.h,.tt th.h{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
@@ -86,6 +89,8 @@ table.tt{width:100%;border-collapse:collapse;font-size:13.5px;}
 .tt td.d .w{color:var(--muted);margin-left:4px;font-size:12px;} .tt td.d .w.su{color:#dc2626;} .tt td.d .w.sa{color:#2563eb;}
 .tt tr.r{cursor:pointer;} .tt tr.r:hover td{background:var(--pink-s);}
 .tt tr.r.future td{color:var(--muted);}
+.tt tr.r.blank td{height:30px;} .tt tr.r.we td{background:#fafafa;} .tt tr.r.tdy td{background:#fef9c3 !important;}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .tt tr.r.we td{background:#1b2232;} :root:not([data-theme="light"]) .tt tr.r.tdy td{background:#3a3412 !important;} }
 .tt tr.mo td{background:var(--bg);font-weight:800;font-size:12.5px;color:#0369a1;}
 .tt td.nt{white-space:pre-wrap;word-break:break-all;}
 .tt tfoot td{font-weight:800;background:#e0f2fe;color:#075985;}
@@ -134,6 +139,7 @@ table.tt{width:100%;border-collapse:collapse;font-size:13.5px;}
   .toSum{font-size:11.5px;padding:5px 8px;}
   .cards{grid-template-columns:repeat(2,minmax(0,1fr));} .card .v{font-size:19px;} .card.wide{grid-column:1 / -1;}
   .shTop .fy{font-size:16px;min-width:0;flex:1;} .shTop .sp{display:none;}
+  .tblWrap{max-height:72dvh;}
   table.tt{font-size:12.5px;} .tt th,.tt td{padding:6px 6px;} .tt th.s,.tt td.s{display:none;}
   .tt td.nt .sx{display:block;color:#0369a1;font-weight:700;} .toBtn{height:34px;font-size:12px;padding:0 10px;}
 }
@@ -177,7 +183,10 @@ let toLimits = {}, toEdit = null, toErr = '';
 const DEF_LIMIT = 1391;   // 연간 TIME OFF 한도(04.01 ~ 다음 해 03.31)
 let view = (()=>{ try{ return localStorage.getItem('ohwonil_view') === 'sheet' ? 'sheet' : 'cal'; }catch(e){ return 'cal'; } })();
 const fyOf = d=>{ const y = +d.slice(0,4), m = +d.slice(5,7); return m >= 4 ? y : y - 1; };
-let fy = fyOf(todayStr());
+let fy = (()=>{ try{ const v = +localStorage.getItem('ohwonil_fy'); if(v > 2000 && v < 2100) return v; }catch(e){} return fyOf(todayStr()); })();   // 보던 연도 기억
+const keepFy = ()=>{ try{ localStorage.setItem('ohwonil_fy', String(fy)); }catch(e){} };
+const scrollKey = ()=> 'ohwonil_toScroll_' + fy;
+let sheetPh = null;
 const fyRange = y=> [`${y}-04-01`, `${y+1}-03-31`];
 const limitOf = y=>{ const v = Number(toLimits[y]); return Number.isFinite(v) && v > 0 ? v : DEF_LIMIT; };
 async function toSave(){
@@ -220,15 +229,20 @@ function renderSheet(){
   const rows = Object.values(toRows).filter(r=> r.d >= a && r.d <= b).sort((x,y)=> x.d < y.d ? -1 : 1);
   const T = rows.reduce((s,r)=> s + (r.h||0), 0), U = rows.filter(r=> r.d <= today).reduce((s,r)=> s + (r.h||0), 0);
   const remT = L - T, remU = L - U, pct = Math.min(T / L * 100, 100);
+  const ph = sheetPh = window.matchMedia('(max-width:700px)').matches, S = h=> ph ? '' : h;   // 휴대폰: 스케줄 칸 없이(비고 칸 위에 같이 표시)
+  const oldWrap = el.querySelector('.tblWrap'), oldTop = oldWrap && oldWrap.dataset.fy===String(fy) ? oldWrap.scrollTop : null;
   const card = (k, v, c='')=> `<div class="card ${c}"><div class="k">${k}</div><div class="v">${v}<small>시간</small></div></div>`;
   let body = '', curM = '', mSum = 0;
-  const flush = ()=>{ if(curM) body += `<tr class="mo"><td>${+curM.slice(5)}월 소계</td><td class="h">${hstr(mSum)}</td><td class="s"></td><td></td></tr>`; };
-  rows.forEach(r=>{
-    const mm = r.d.slice(0,7); if(mm !== curM){ flush(); curM = mm; mSum = 0; }
+  const flush = ()=>{ if(curM) body += `<tr class="mo"><td>${+curM.slice(5)}월 소계</td><td class="h">${hstr(mSum)}</td>${S('<td class="s"></td>')}<td></td></tr>`; };
+  for(let D = a; D <= b; ){   // 1년치 모든 날짜(빈 날도 한 줄씩) — 빈 줄을 누르면 그날 새로 넣기
+    const r = toRows[D] || {d: D, h: 0, s: '', n: ''}, has = !!toRows[D];
+    const mm = D.slice(0,7); if(mm !== curM){ flush(); curM = mm; mSum = 0; }
     mSum += r.h||0;
-    const [yy,m2,dd] = r.d.split('-').map(Number), w = new Date(yy,m2-1,dd).getDay();
-    body += `<tr class="r${r.d > today ? ' future' : ''}" data-ed="${r.d}"><td class="d">${m2}/${dd}<span class="w${w===0?' su':w===6?' sa':''}">${'일월화수목금토'[w]}</span></td><td class="h">${r.h ? hstr(r.h) : ''}</td><td class="s">${esc(r.s)}</td><td class="nt">${r.s ? `<span class="sx" style="display:none">${esc(r.s)}</span>` : ''}${esc(r.n)}</td></tr>`;
-  });
+    const [yy,m2,dd] = D.split('-').map(Number), w = new Date(yy,m2-1,dd).getDay();
+    const nx = new Date(yy, m2-1, dd+1); const nD = ds(nx.getFullYear(), nx.getMonth()+1, nx.getDate());
+    body += `<tr class="r${has ? '' : ' blank'}${D > today ? ' future' : ''}${D===today ? ' tdy' : ''}${w===0 || w===6 || holidays[D] ? ' we' : ''}" data-ed="${D}"><td class="d">${m2}/${dd}<span class="w${w===0 || holidays[D] ?' su':w===6?' sa':''}">${'일월화수목금토'[w]}</span></td><td class="h">${r.h ? hstr(r.h) : ''}</td>${S(`<td class="s">${esc(r.s)}</td>`)}<td class="nt">${ph && r.s ? `<span class="sx">${esc(r.s)}</span>` : ''}${esc(r.n)}</td></tr>`;
+    D = nD;
+  }
   flush();
   el.innerHTML = `<div class="sh">
     <div class="shTop"><button type="button" class="shBtn" id="fyPrev" aria-label="이전 연도">‹</button>
@@ -243,17 +257,21 @@ function renderSheet(){
       ${card('남은 시간 (오늘 기준)', hstr(remU), remU < 0 ? 'neg' : 'pos')}
     </div>
     <div class="bar2${T > L ? ' over' : ''}" title="한도 대비 ${Math.round(T/L*100)}%"><i style="width:${pct}%"></i></div>
-    <p class="shNote">한도 ${hstr(L)}시간 중 ${hstr(T)}시간(${Math.round(T/L*100)}%)${remT < 0 ? ` — <b style="color:#dc2626">${hstr(-remT)}시간 초과</b>` : ''}. 오늘 뒤 날짜(흐린 글씨)는 계획이에요. 줄을 누르면 고칠 수 있어요.</p>
+    <p class="shNote">한도 ${hstr(L)}시간 중 ${hstr(T)}시간(${Math.round(T/L*100)}%)${remT < 0 ? ` — <b style="color:#dc2626">${hstr(-remT)}시간 초과</b>` : ''}. 오늘 뒤 날짜(흐린 글씨)는 계획이에요. 줄을 누르면 고치고, 빈 줄을 누르면 그날 새로 넣어요.</p>
     ${toErr ? `<div class="err">${esc(toErr)}</div>` : ''}
-    <div class="tblWrap"><table class="tt"><thead><tr><th>날짜</th><th class="h">시간</th><th class="s">스케줄</th><th>비고</th></tr></thead>
-      <tbody>${body || '<tr><td colspan="4" class="nt" style="color:var(--muted)">이 연도에는 TIME OFF가 없어요. ＋ 추가로 넣어 주세요.</td></tr>'}</tbody>
-      <tfoot><tr><td>합계</td><td class="h">${hstr(T)}</td><td class="s"></td><td>남은 ${hstr(remT)}시간</td></tr></tfoot></table></div>
+    <div class="tblWrap" data-fy="${fy}"><table class="tt"><colgroup>${ph ? '<col style="width:64px"><col style="width:52px"><col>' : '<col style="width:110px"><col style="width:80px"><col style="width:30%"><col>'}</colgroup>
+      <thead><tr><th>날짜</th><th class="h">시간</th>${S('<th class="s">스케줄</th>')}<th>비고</th></tr></thead>
+      <tbody>${body || '<tr><td colspan="${ph ? 3 : 4}" class="nt" style="color:var(--muted)">이 연도에는 TIME OFF가 없어요. ＋ 추가로 넣어 주세요.</td></tr>'}</tbody>
+      <tfoot><tr><td>합계</td><td class="h">${hstr(T)}</td>${S('<td class="s"></td>')}<td>남은 ${hstr(remT)}시간</td></tr></tfoot></table></div>
   </div>`;
-  if(window.matchMedia('(max-width:700px)').matches) el.querySelectorAll('.sx').forEach(x=> x.style.display = 'block');   // 휴대폰: 스케줄을 비고 칸 위에
-  $('fyPrev').onclick = ()=>{ fy--; render(); };
-  $('fyNext').onclick = ()=>{ fy++; render(); };
+  { const w = el.querySelector('.tblWrap');   // 표 안에서만 스크롤 + 머리줄·합계줄 고정. 스크롤 위치는 나갔다 와도 그대로
+    let top = oldTop; if(top==null){ try{ top = +localStorage.getItem(scrollKey()) || 0; }catch(e){ top = 0; } }
+    w.scrollTop = top;
+    let tm = 0; w.addEventListener('scroll', ()=>{ clearTimeout(tm); tm = setTimeout(()=>{ try{ localStorage.setItem(scrollKey(), String(Math.round(w.scrollTop))); }catch(e){} }, 150); }, {passive:true}); }
+  $('fyPrev').onclick = ()=>{ fy--; keepFy(); render(); };
+  $('fyNext').onclick = ()=>{ fy++; keepFy(); render(); };
   $('toAdd').onclick = ()=>{ toEdit = {d: todayStr() >= a && todayStr() <= b ? todayStr() : a, h: 8, s: '', n: '', isNew: true}; renderEdit(); };
-  el.querySelectorAll('[data-ed]').forEach(tr=> tr.onclick = ()=>{ const r = toRows[tr.dataset.ed]; toEdit = Object.assign({}, r, {orig: r.d}); renderEdit(); });
+  el.querySelectorAll('[data-ed]').forEach(tr=> tr.onclick = ()=>{ const d = tr.dataset.ed, r = toRows[d]; toEdit = r ? Object.assign({}, r, {orig: r.d}) : {d, h: 8, s: '', n: '', isNew: true}; renderEdit(); });
   const li = $('limIn');
   li.onchange = async ()=>{ const v = Number(li.value); if(!(v > 0)) { li.value = L; return; } toLimits = Object.assign({}, toLimits, {[fy]: v}); li.blur(); try{ toErr = ''; await toSave(); }catch(e){ toErr = '저장하지 못했어요: ' + ((e && e.code) || '오류'); } render(); };
   li.onkeydown = e=>{ if(e.key==='Enter') li.blur(); };
@@ -328,7 +346,7 @@ function renderEdit(){
     if(e.orig && e.orig !== d) delete toRows[e.orig];
     toRows[d] = {d, h, s: s2, n};
     msg('저장 중…');
-    try{ await toSave(); fy = fyOf(d); close(); render(); }catch(err){ toRows = backup; msg('저장하지 못했어요: ' + ((err && err.code) || '오류')); }
+    try{ await toSave(); fy = fyOf(d); keepFy(); close(); render(); }catch(err){ toRows = backup; msg('저장하지 못했어요: ' + ((err && err.code) || '오류')); }
   };
   if($('edDel')) $('edDel').onclick = async ()=>{
     const backup = Object.assign({}, toRows); delete toRows[e.orig]; msg('삭제 중…');
@@ -372,10 +390,11 @@ function monthEvents(y, m){ const first = ds(y,m,1); return (data[key(y,m)]||[])
 function label(d){ const [y,m,dd] = d.split('-').map(Number); return `${m}월 ${dd}일 (${'일월화수목금토'[new Date(y,m-1,dd).getDay()]})`; }
 function range(e){ if(end(e)===e.d) return ''; const f = x=>{ const [,mm,dd] = x.split('-').map(Number); return `${mm}/${dd}`; }; return `${f(e.d)} ~ ${f(end(e))}`; }
 function render(){
-  $('tabs').hidden = !isUnion; if(!isUnion) view = 'cal';
-  $('tabs').querySelectorAll('button').forEach(b=> b.classList.toggle('on', b.dataset.v===view));
-  $('calView').hidden = view !== 'cal'; $('sheetView').hidden = view !== 'sheet';
-  if(view==='sheet') renderSheet();
+  const vw = isUnion ? view : 'cal';   // 로그인 전엔 캘린더만(고른 탭은 기억해 둠)
+  $('tabs').hidden = !isUnion;
+  $('tabs').querySelectorAll('button').forEach(b=> b.classList.toggle('on', b.dataset.v===vw));
+  $('calView').hidden = vw !== 'cal'; $('sheetView').hidden = vw !== 'sheet';
+  if(vw==='sheet') renderSheet();
   const {y, m} = ym; watch(key(y,m)); watch(prevKey(y,m));
   $('ym').textContent = `${y}년 ${m}월`;
   $('toBtn').hidden = isUnion || !auth;   // 로그인 전에만 보임(TIME OFF는 UNION 로그인 때만)
@@ -407,6 +426,7 @@ function renderPop(){
 }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && evEdit){ evEdit = null; renderEv(); return; } if(e.key==='Escape' && toEdit){ toEdit = null; renderEdit(); return; } if(e.key==='Escape' && popDay){ popDay = ''; renderPop(); } });
 $('prev').onclick = ()=> go(-1);
+window.addEventListener('resize', ()=>{ if(view==='sheet' && isUnion && sheetPh !== null && sheetPh !== window.matchMedia('(max-width:700px)').matches) render(); });
 $('tabs').querySelectorAll('button').forEach(b=> b.onclick = ()=>{ view = b.dataset.v; try{ localStorage.setItem('ohwonil_view', view); }catch(e){} render(); });
 $('toBtn').onclick = ()=>{ if(!auth){ $('err').innerHTML = '<div class="err">아직 연결 중이에요. 잠시 뒤 다시 눌러 주세요.</div>'; return; } toPop = true; toMsg = ''; renderToPop(); };
 $('toFile').onchange = e=>{ const f = e.target.files && e.target.files[0]; e.target.value = ''; if(f) toImport(f); };
