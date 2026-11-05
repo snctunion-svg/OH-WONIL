@@ -133,13 +133,13 @@ table.tt{width:100%;border-collapse:collapse;font-size:13.5px;}
 <header><h1><svg class="appLogo" viewBox="10 13 66 46" aria-hidden="true"><g fill="none" stroke="#e00000" stroke-width="2.6" stroke-linecap="square"><line x1="13.96" y1="40.48" x2="50.04" y2="17.52"/><line x1="35.96" y1="17.52" x2="72.04" y2="40.48"/><line x1="72.04" y1="31.52" x2="35.96" y2="54.48"/><line x1="50.04" y1="54.48" x2="13.96" y2="31.52"/><path d="M33 42 L37.3 31 L40.6 39.5"/><circle cx="47.6" cy="36.6" r="4.9"/></g></svg>Oh Won-il</h1><span class="sub">SNCT 노동조합</span><span class="live" id="live"><i></i><span>연결 중…</span></span></header>
 <main>
   <div id="err"></div>
-  <div class="tabs" id="tabs" hidden><button type="button" data-v="cal">📅 캘린더</button><button type="button" data-v="sheet">⏱ TIME OFF 시트</button></div>
+  <div class="tabs" id="tabs" hidden><button type="button" data-v="cal">📅 캘린더</button><button type="button" data-v="sheet">⏱ TIME OFF</button></div>
   <div id="sheetView" hidden></div>
   <div id="calView">
   <div class="top">
     <div class="nav"><button type="button" id="prev" aria-label="이전 달">‹</button><span class="ym" id="ym"></span><button type="button" id="next" aria-label="다음 달">›</button></div>
     <button type="button" class="today" id="today">오늘</button>
-    <button type="button" class="toBtn" id="toBtn">⏱ TIME OFF</button><span class="toSum" id="toSum" hidden></span>
+    <button type="button" class="toBtn" id="toBtn" hidden>🔒 로그인</button>
     <div class="legend"><span><i style="background:#e0f2fe"></i>TIME OFF</span><span><i style="background:#fbcfe8"></i>위원장</span><span><i style="background:#fef08a"></i>사무국</span><span><i style="background:#fff;border:1px solid #d1d5db"></i>기타</span></div>
   </div>
   <div class="grid" id="grid"></div>
@@ -224,7 +224,7 @@ function renderSheet(){
     <div class="shTop"><button type="button" class="shBtn" id="fyPrev" aria-label="이전 연도">‹</button>
       <div class="fy">${fy}년도 TIME OFF<small>${fy}.04.01 ~ ${fy+1}.03.31</small></div>
       <button type="button" class="shBtn" id="fyNext" aria-label="다음 연도">›</button><span class="sp"></span>
-      <button type="button" class="shBtn pri" id="toAdd">＋ 추가</button><button type="button" class="shBtn" id="toXl">📂 엑셀</button></div>
+      <button type="button" class="shBtn pri" id="toAdd">＋ 추가</button></div>
     <div class="cards">
       <div class="card lim"><div class="k">연간 한도</div><input type="number" id="limIn" min="0" step="1" value="${L}" inputmode="numeric"></div>
       ${card('사용 합계 (계획 포함)', hstr(T))}
@@ -236,14 +236,13 @@ function renderSheet(){
     <p class="shNote">한도 ${hstr(L)}시간 중 ${hstr(T)}시간(${Math.round(T/L*100)}%)${remT < 0 ? ` — <b style="color:#dc2626">${hstr(-remT)}시간 초과</b>` : ''}. 오늘 뒤 날짜(흐린 글씨)는 계획이에요. 줄을 누르면 고칠 수 있어요.</p>
     ${toErr ? `<div class="err">${esc(toErr)}</div>` : ''}
     <div class="tblWrap"><table class="tt"><thead><tr><th>날짜</th><th class="h">시간</th><th class="s">스케줄</th><th>비고</th></tr></thead>
-      <tbody>${body || '<tr><td colspan="4" class="nt" style="color:var(--muted)">이 연도에는 TIME OFF가 없어요. ＋ 추가 또는 📂 엑셀로 넣어 주세요.</td></tr>'}</tbody>
+      <tbody>${body || '<tr><td colspan="4" class="nt" style="color:var(--muted)">이 연도에는 TIME OFF가 없어요. ＋ 추가로 넣어 주세요.</td></tr>'}</tbody>
       <tfoot><tr><td>합계</td><td class="h">${hstr(T)}</td><td class="s"></td><td>남은 ${hstr(remT)}시간</td></tr></tfoot></table></div>
   </div>`;
   if(window.matchMedia('(max-width:700px)').matches) el.querySelectorAll('.sx').forEach(x=> x.style.display = 'block');   // 휴대폰: 스케줄을 비고 칸 위에
   $('fyPrev').onclick = ()=>{ fy--; render(); };
   $('fyNext').onclick = ()=>{ fy++; render(); };
   $('toAdd').onclick = ()=>{ toEdit = {d: todayStr() >= a && todayStr() <= b ? todayStr() : a, h: 8, s: '', n: '', isNew: true}; renderEdit(); };
-  $('toXl').onclick = ()=>{ toPop = true; toMsg = ''; renderToPop(); };
   el.querySelectorAll('[data-ed]').forEach(tr=> tr.onclick = ()=>{ const r = toRows[tr.dataset.ed]; toEdit = Object.assign({}, r, {orig: r.d}); renderEdit(); });
   const li = $('limIn');
   li.onchange = async ()=>{ const v = Number(li.value); if(!(v > 0)) { li.value = L; return; } toLimits = Object.assign({}, toLimits, {[fy]: v}); li.blur(); try{ toErr = ''; await toSave(); }catch(e){ toErr = '저장하지 못했어요: ' + ((e && e.code) || '오류'); } render(); };
@@ -325,15 +324,14 @@ function render(){
   if(view==='sheet') renderSheet();
   const {y, m} = ym; watch(key(y,m)); watch(prevKey(y,m));
   $('ym').textContent = `${y}년 ${m}월`;
-  { const k = key(y,m), sum = Object.values(toRows).filter(r=> r.d.slice(0,7)===k).reduce((a,r)=> a + (r.h||0), 0), el = $('toSum');
-    el.hidden = !isUnion; el.textContent = `이번 달 TIME OFF ${hstr(sum)}시간`; $('toBtn').textContent = isUnion ? '⏱ TIME OFF' : '🔒 TIME OFF'; }
+  $('toBtn').hidden = isUnion || !auth;   // 로그인 전에만 보임(TIME OFF는 UNION 로그인 때만)
   const first = new Date(y, m-1, 1).getDay(), days = new Date(y, m, 0).getDate(), today = todayStr(), list = monthEvents(y, m);
   const cells = []; for(let i = 0; i < first; i++) cells.push('<div class="cell out"></div>');
   for(let d = 1; d <= days; d++){
     const D = ds(y,m,d), w = (first + d - 1) % 7, hol = holidays[D];
     const ev = list.filter(e=> on(e, D)).sort((a,b)=> (a.d < b.d ? -1 : a.d > b.d ? 1 : 0) || String(a.t||'').localeCompare(String(b.t||'')));
     cells.push(`<button type="button" class="cell${w===0?' sun':w===6?' sat':''}${hol?' hl':''}${D===today?' today':''}" data-day="${D}"><span class="row"><span class="num">${d}</span>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</span>
-      ${toRows[D] ? `<span class="ev to">${toRows[D].h ? `<b>${hstr(toRows[D].h)}h</b>` : ''}${esc(toTitle(toRows[D]) || (toRows[D].h ? '' : 'TIME OFF'))}</span>` : ''}
+      ${toRows[D] && toTitle(toRows[D]) ? `<span class="ev to">${esc(toTitle(toRows[D]))}</span>` : ''}
       ${ev.slice(0,3).map(e=> `<span class="ev ${cls(e)}">* ${esc(e.title||'')}${e.t && e.d===D ? ` <b>${esc(e.t)}</b>` : ''}</span>`).join('')}${ev.length > 3 ? `<span class="more">+${ev.length-3}개 더</span>` : ''}</button>`);
   }
   while(cells.length % 7) cells.push('<div class="cell out"></div>');
@@ -346,7 +344,7 @@ function renderPop(){
   if(!popDay){ $('pop').innerHTML = ''; return; }
   const [y,m] = popDay.split('-').map(Number), ev = monthEvents(y, m).filter(e=> on(e, popDay));
   $('pop').innerHTML = `<div class="scrim" id="scrim"><div class="pop" role="dialog" aria-label="${esc(label(popDay))} 일정"><div class="popHd">${esc(label(popDay))}${holidays[popDay] ? `<span class="hl">${esc(holidays[popDay])}</span>` : ''}<button type="button" class="x" id="x" aria-label="닫기">✕</button></div>
-    <div class="list">${toRows[popDay] ? `<div class="item to"><span class="bar"></span><div><b>⏱ TIME OFF${toRows[popDay].h ? ' ' + esc(hstr(toRows[popDay].h)) + '시간' : ''}</b>${toRows[popDay].s ? `<div class="s">스케줄: ${esc(toRows[popDay].s)}</div>` : ''}${toRows[popDay].n ? `<div class="m">${esc(toRows[popDay].n)}</div>` : ''}</div></div>` : ''}${ev.length ? ev.map(e=> `<div class="item ${cls(e)}"><span class="bar"></span><div><b>${esc(e.title||'(제목 없음)')}</b>${range(e) || e.t ? `<div class="s">${range(e) ? '📅 ' + esc(range(e)) : ''}${range(e) && e.t ? ' · ' : ''}${e.t ? '🕘 ' + esc(e.t) : ''}${e.who ? ' · ' + esc(e.who) : ''}</div>` : (e.who ? `<div class="s">${esc(e.who)}</div>` : '')}${e.memo ? `<div class="m">${esc(e.memo)}</div>` : ''}</div></div>`).join('') : (toRows[popDay] ? '' : '<div class="empty">이 날은 일정이 없어요.</div>')}</div></div></div>`;
+    <div class="list">${toRows[popDay] && toTitle(toRows[popDay]) ? `<div class="item to"><span class="bar"></span><div><b>⏱ TIME OFF</b>${toRows[popDay].s ? `<div class="s">스케줄: ${esc(toRows[popDay].s)}</div>` : ''}${toRows[popDay].n ? `<div class="m">${esc(toRows[popDay].n)}</div>` : ''}</div></div>` : ''}${ev.length ? ev.map(e=> `<div class="item ${cls(e)}"><span class="bar"></span><div><b>${esc(e.title||'(제목 없음)')}</b>${range(e) || e.t ? `<div class="s">${range(e) ? '📅 ' + esc(range(e)) : ''}${range(e) && e.t ? ' · ' : ''}${e.t ? '🕘 ' + esc(e.t) : ''}${e.who ? ' · ' + esc(e.who) : ''}</div>` : (e.who ? `<div class="s">${esc(e.who)}</div>` : '')}${e.memo ? `<div class="m">${esc(e.memo)}</div>` : ''}</div></div>`).join('') : (toRows[popDay] && toTitle(toRows[popDay]) ? '' : '<div class="empty">이 날은 일정이 없어요.</div>')}</div></div></div>`;
   $('x').onclick = ()=>{ popDay = ''; renderPop(); };
   $('scrim').onclick = e=>{ if(e.target.id==='scrim'){ popDay = ''; renderPop(); } };
 }
