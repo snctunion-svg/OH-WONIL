@@ -81,6 +81,8 @@ main{max-width:1200px;margin:0 auto;padding:14px 16px calc(24px + env(safe-area-
 table.tt{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;table-layout:fixed;}
 .tt td{overflow-wrap:anywhere;}
 .tt thead th{position:sticky;top:0;z-index:3;}
+.tblWrap{scroll-snap-type:y mandatory;}   /* 스크롤하면 줄 단위로 딱 맞춰 멈춤(머리줄 아래에 줄이 잘리지 않게) */
+.tt tbody td:first-child{scroll-snap-align:start;}
 .tt tfoot td{position:sticky;bottom:0;z-index:3;border-top:1px solid #7dd3fc;}
 .tt th{background:#f0f9ff;color:#075985;font-weight:800;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;}
 .tt td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
@@ -265,6 +267,7 @@ function renderSheet(){
       <tfoot><tr><td>합계</td><td class="h">${hstr(T)}</td>${S('<td class="s"></td>')}<td>남은 ${hstr(remT)}시간</td></tr></tfoot></table></div>
   </div>`;
   { const w = el.querySelector('.tblWrap');   // 표 안에서만 스크롤 + 머리줄·합계줄 고정. 스크롤 위치는 나갔다 와도 그대로
+    w.style.scrollPaddingTop = w.querySelector('thead').offsetHeight + 'px'; w.style.scrollPaddingBottom = w.querySelector('tfoot').offsetHeight + 'px';
     let top = oldTop; if(top==null){ try{ top = +localStorage.getItem(scrollKey()) || 0; }catch(e){ top = 0; } }
     w.scrollTop = top;
     let tm = 0; w.addEventListener('scroll', ()=>{ clearTimeout(tm); tm = setTimeout(()=>{ try{ localStorage.setItem(scrollKey(), String(Math.round(w.scrollTop))); }catch(e){} }, 150); }, {passive:true}); }
