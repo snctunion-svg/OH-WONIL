@@ -94,6 +94,16 @@ table.tt{width:100%;border-collapse:collapse;font-size:13.5px;}
 .toForm label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:700;color:var(--muted);}
 .toForm label input{height:40px;border:1px solid var(--line);border-radius:8px;padding:0 10px;font-size:15px;background:var(--card);color:var(--text);font-weight:600;}
 .toForm .btns .del{color:#dc2626;margin-right:auto;}
+.item.edit{cursor:pointer;} .item.edit:hover{outline:2px solid var(--pink-l);}
+.popBtns{display:flex;justify-content:flex-end;padding:0 12px 12px;}
+.toForm .two{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.toForm .two label{min-width:0;} .toForm label input{width:100%;min-width:0;}
+.toForm textarea{min-height:80px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:14px;background:var(--card);color:var(--text);font-weight:500;resize:vertical;}
+.whoRow{display:flex;gap:6px;}
+.whoRow .who{flex:1;height:36px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text);font-weight:700;cursor:pointer;}
+.whoRow .who[data-who="위원장"].on{background:#fbcfe8;border-color:#ec4899;color:#111;}
+.whoRow .who[data-who="사무국"].on{background:#fef08a;border-color:#eab308;color:#111;}
+.whoRow .who[data-who="기타"].on{background:#fff;border-color:#64748b;color:#111;}
 .more{font-size:11px;color:var(--muted);font-weight:700;padding-left:3px;}
 .note{margin:10px 0 0;font-size:12px;color:var(--muted);}
 .err{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:13px;}
@@ -140,10 +150,10 @@ table.tt{width:100%;border-collapse:collapse;font-size:13.5px;}
     <div class="nav"><button type="button" id="prev" aria-label="이전 달">‹</button><span class="ym" id="ym"></span><button type="button" id="next" aria-label="다음 달">›</button></div>
     <button type="button" class="today" id="today">오늘</button>
     <button type="button" class="toBtn" id="toBtn" hidden>🔒 로그인</button>
-    <div class="legend"><span><i style="background:#e0f2fe"></i>TIME OFF</span><span><i style="background:#fbcfe8"></i>위원장</span><span><i style="background:#fef08a"></i>사무국</span><span><i style="background:#fff;border:1px solid #d1d5db"></i>기타</span></div>
+    <div class="legend"><span><i style="background:#fbcfe8"></i>위원장</span><span><i style="background:#fef08a"></i>사무국</span><span><i style="background:#fff;border:1px solid #d1d5db"></i>기타</span></div>
   </div>
   <div class="grid" id="grid"></div>
-  <p class="note">SNCT 노동조합(UNION) 캘린더와 자동으로 연동돼요. 날짜를 누르면 그날 일정이 보여요. TIME OFF(하늘색)는 UNION 로그인 때만 보여요.</p>
+  <p class="note">SNCT 노동조합(UNION) 캘린더와 자동으로 연동돼요. 날짜를 누르면 그날 일정이 보이고, UNION 로그인 때는 여기서 일정을 올리고 고칠 수 있어요(노동조합 캘린더에도 바로 반영).</p>
   </div>
   <input type="file" id="toFile" accept=".xlsm,.xlsx,.xls" hidden>
 </main>
@@ -249,6 +259,50 @@ function renderSheet(){
   li.onkeydown = e=>{ if(e.key==='Enter') li.blur(); };
   li.onblur = ()=>{ if(Number(li.value) !== L) li.onchange(); else render(); };
 }
+// ===== 일정 올리기·고치기: 노동조합 캘린더와 같은 곳(meta/cal_YYYY-MM)에 저장 → 양쪽 실시간 연동. UNION 로그인 때만 =====
+let evEdit = null;
+async function calLoad(k){ if(data[k]) return data[k].slice(); const d = await F.getDoc(F.doc(fs, 'meta', 'cal_' + k)); return parse(d); }
+async function calPut(k, list){ list.sort((a,b)=> (a.d + (a.t||'')).localeCompare(b.d + (b.t||''))); data[k] = list; await F.setDoc(F.doc(fs, 'meta', 'cal_' + k), {json: JSON.stringify(list), at: Date.now()}); }
+function renderEv(){
+  let box = $('evEd');
+  if(!evEdit){ if(box) box.remove(); return; }
+  if(!box){ box = document.createElement('div'); box.id = 'evEd'; document.body.appendChild(box); }
+  const e = evEdit;
+  box.innerHTML = `<div class="scrim" id="evScrim" style="z-index:60"><div class="pop" role="dialog" aria-label="일정 ${e.isNew ? '추가' : '수정'}"><div class="popHd">${e.isNew ? '일정 추가' : '일정 수정'}<button type="button" class="x" id="evX" aria-label="닫기">✕</button></div>
+    <div class="toForm">
+      <div class="two"><label>시작<input type="date" id="evD" value="${esc(e.d)}"></label><label>종료<input type="date" id="evE" value="${esc(e.e && e.e > e.d ? e.e : e.d)}"></label></div>
+      <label>시간 (선택)<input type="time" id="evT" value="${esc(e.t||'')}"></label>
+      <div class="whoRow">${['위원장','사무국','기타'].map(w=> `<button type="button" class="who${e.who===w ? ' on' : ''}" data-who="${w}">${w}</button>`).join('')}</div>
+      <label>제목<input type="text" id="evTitle" maxlength="60" value="${esc(e.title||'')}"></label>
+      <label>메모 (장소·참석자 등)<textarea id="evMemo" maxlength="1000">${esc(e.memo||'')}</textarea></label>
+      <div class="msg" id="evMsg"></div>
+      <div class="btns">${e.isNew ? '' : '<button type="button" class="del" id="evDel">🗑 삭제</button>'}<button type="button" id="evCancel">취소</button><button type="button" class="pri" id="evSave">💾 저장</button></div>
+    </div></div></div>`;
+  const close = ()=>{ evEdit = null; renderEv(); };
+  $('evX').onclick = close; $('evCancel').onclick = close; $('evScrim').onclick = ev=>{ if(ev.target.id==='evScrim') close(); };
+  box.querySelectorAll('[data-who]').forEach(b=> b.onclick = ()=>{ e.who = e.who===b.dataset.who ? '' : b.dataset.who; box.querySelectorAll('[data-who]').forEach(x=> x.classList.toggle('on', x.dataset.who===e.who)); });
+  const msg = t=> $('evMsg').textContent = t;
+  $('evSave').onclick = async ()=>{
+    const d = $('evD').value, en0 = $('evE').value || d, t = $('evT').value, title = $('evTitle').value.trim(), memo = $('evMemo').value.trim();
+    if(!d) return msg('시작 날짜를 고르세요.');
+    if(en0 < d) return msg('종료 날짜가 시작보다 빨라요.');
+    if(!title){ $('evTitle').focus(); return msg('제목을 적어 주세요.'); }
+    const item = {id: e.orig || ('e' + Date.now().toString(36) + Math.random().toString(36).slice(2,6)), d, e: en0 > d ? en0 : '', t, who: e.who || '', title, memo, c: e.c || 'gen'};
+    msg('저장 중…'); $('evSave').disabled = true;
+    try{
+      const nk = d.slice(0,7);
+      if(e.origK && e.origK !== nk) await calPut(e.origK, (await calLoad(e.origK)).filter(x=> x.id!==item.id));
+      const list = (await calLoad(nk)).filter(x=> x.id!==item.id); list.push(item); await calPut(nk, list);
+      close(); popDay = d; render();
+    }catch(err){ $('evSave').disabled = false; msg('저장하지 못했어요: ' + ((err && err.code) || '오류')); }
+  };
+  if($('evDel')) $('evDel').onclick = async ()=>{
+    if(!confirm('이 일정을 지울까요? 노동조합 캘린더에서도 지워져요.')) return;
+    msg('삭제 중…');
+    try{ await calPut(e.origK, (await calLoad(e.origK)).filter(x=> x.id!==e.orig)); close(); render(); }
+    catch(err){ msg('지우지 못했어요: ' + ((err && err.code) || '오류')); }
+  };
+}
 function renderEdit(){
   let box = $('toEd');
   if(!toEdit){ if(box) box.remove(); return; }
@@ -331,7 +385,6 @@ function render(){
     const D = ds(y,m,d), w = (first + d - 1) % 7, hol = holidays[D];
     const ev = list.filter(e=> on(e, D)).sort((a,b)=> (a.d < b.d ? -1 : a.d > b.d ? 1 : 0) || String(a.t||'').localeCompare(String(b.t||'')));
     cells.push(`<button type="button" class="cell${w===0?' sun':w===6?' sat':''}${hol?' hl':''}${D===today?' today':''}" data-day="${D}"><span class="row"><span class="num">${d}</span>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</span>
-      ${toRows[D] && toTitle(toRows[D]) ? `<span class="ev to">${esc(toTitle(toRows[D]))}</span>` : ''}
       ${ev.slice(0,3).map(e=> `<span class="ev ${cls(e)}">* ${esc(e.title||'')}${e.t && e.d===D ? ` <b>${esc(e.t)}</b>` : ''}</span>`).join('')}${ev.length > 3 ? `<span class="more">+${ev.length-3}개 더</span>` : ''}</button>`);
   }
   while(cells.length % 7) cells.push('<div class="cell out"></div>');
@@ -344,11 +397,15 @@ function renderPop(){
   if(!popDay){ $('pop').innerHTML = ''; return; }
   const [y,m] = popDay.split('-').map(Number), ev = monthEvents(y, m).filter(e=> on(e, popDay));
   $('pop').innerHTML = `<div class="scrim" id="scrim"><div class="pop" role="dialog" aria-label="${esc(label(popDay))} 일정"><div class="popHd">${esc(label(popDay))}${holidays[popDay] ? `<span class="hl">${esc(holidays[popDay])}</span>` : ''}<button type="button" class="x" id="x" aria-label="닫기">✕</button></div>
-    <div class="list">${toRows[popDay] && toTitle(toRows[popDay]) ? `<div class="item to"><span class="bar"></span><div><b>⏱ TIME OFF</b>${toRows[popDay].s ? `<div class="s">스케줄: ${esc(toRows[popDay].s)}</div>` : ''}${toRows[popDay].n ? `<div class="m">${esc(toRows[popDay].n)}</div>` : ''}</div></div>` : ''}${ev.length ? ev.map(e=> `<div class="item ${cls(e)}"><span class="bar"></span><div><b>${esc(e.title||'(제목 없음)')}</b>${range(e) || e.t ? `<div class="s">${range(e) ? '📅 ' + esc(range(e)) : ''}${range(e) && e.t ? ' · ' : ''}${e.t ? '🕘 ' + esc(e.t) : ''}${e.who ? ' · ' + esc(e.who) : ''}</div>` : (e.who ? `<div class="s">${esc(e.who)}</div>` : '')}${e.memo ? `<div class="m">${esc(e.memo)}</div>` : ''}</div></div>`).join('') : (toRows[popDay] && toTitle(toRows[popDay]) ? '' : '<div class="empty">이 날은 일정이 없어요.</div>')}</div></div></div>`;
+    <div class="list">${ev.length ? ev.map(e=> `<div class="item ${cls(e)}${isUnion ? ' edit' : ''}" data-eid="${esc(e.id||'')}" data-ek="${esc((e.d||'').slice(0,7))}"><span class="bar"></span><div><b>${esc(e.title||'(제목 없음)')}</b>${range(e) || e.t ? `<div class="s">${range(e) ? '📅 ' + esc(range(e)) : ''}${range(e) && e.t ? ' · ' : ''}${e.t ? '🕘 ' + esc(e.t) : ''}${e.who ? ' · ' + esc(e.who) : ''}</div>` : (e.who ? `<div class="s">${esc(e.who)}</div>` : '')}${e.memo ? `<div class="m">${esc(e.memo)}</div>` : ''}</div></div>`).join('') : '<div class="empty">이 날은 일정이 없어요.</div>'}</div>${isUnion ? '<div class="popBtns"><button type="button" class="shBtn pri" id="evAdd">＋ 일정 추가</button></div>' : ''}</div></div>`;
   $('x').onclick = ()=>{ popDay = ''; renderPop(); };
+  if(isUnion){
+    $('evAdd').onclick = ()=>{ evEdit = {d: popDay, e: '', t: '', who: '', title: '', memo: '', isNew: true}; renderEv(); };
+    $('pop').querySelectorAll('[data-eid]').forEach(it=> it.onclick = ()=>{ const k = it.dataset.ek, e = (data[k]||[]).find(x=> x.id===it.dataset.eid); if(!e) return; evEdit = Object.assign({}, e, {orig: e.id, origK: k}); renderEv(); });
+  }
   $('scrim').onclick = e=>{ if(e.target.id==='scrim'){ popDay = ''; renderPop(); } };
 }
-document.addEventListener('keydown', e=>{ if(e.key==='Escape' && toEdit){ toEdit = null; renderEdit(); return; } if(e.key==='Escape' && popDay){ popDay = ''; renderPop(); } });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && evEdit){ evEdit = null; renderEv(); return; } if(e.key==='Escape' && toEdit){ toEdit = null; renderEdit(); return; } if(e.key==='Escape' && popDay){ popDay = ''; renderPop(); } });
 $('prev').onclick = ()=> go(-1);
 $('tabs').querySelectorAll('button').forEach(b=> b.onclick = ()=>{ view = b.dataset.v; try{ localStorage.setItem('ohwonil_view', view); }catch(e){} render(); });
 $('toBtn').onclick = ()=>{ if(!auth){ $('err').innerHTML = '<div class="err">아직 연결 중이에요. 잠시 뒤 다시 눌러 주세요.</div>'; return; } toPop = true; toMsg = ''; renderToPop(); };
