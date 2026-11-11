@@ -110,6 +110,8 @@ table.tt{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;t
 .toForm .two label{min-width:0;} .toForm label input{width:100%;min-width:0;}
 .toForm textarea{min-height:80px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:14px;background:var(--card);color:var(--text);font-weight:500;resize:vertical;}
 .whoRow{display:flex;gap:6px;}
+.tmRow{display:flex;gap:6px;align-items:center;min-width:0;} .tmRow input{flex:1 1 0;min-width:0;height:40px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font-size:15px;background:var(--card);color:var(--text);font-weight:600;-webkit-appearance:none;appearance:none;} .tmRow input:disabled{opacity:.45;}
+.toForm .tmLbl .t621{height:30px;padding:0 12px;font-size:13.5px;} .toForm .tmLbl .t621.on{background:#db2777;border-color:#db2777;color:#fff;} .tmLbl{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:-4px;}
 .whoRow .who{flex:1;height:36px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text);font-weight:700;cursor:pointer;}
 .whoRow .who[data-who="위원장"].on{background:#fbcfe8;border-color:#ec4899;color:#111;}
 .whoRow .who[data-who="사무국"].on{background:#fef08a;border-color:#eab308;color:#111;}
@@ -302,7 +304,7 @@ function renderEv(){
   box.innerHTML = `<div class="scrim" id="evScrim" style="z-index:60"><div class="pop" role="dialog" aria-label="일정 ${e.isNew ? '추가' : '수정'}"><div class="popHd">${e.isNew ? '◆ 내 일정 추가' : '◆ 내 일정 수정'}<button type="button" class="x" id="evX" aria-label="닫기">✕</button></div>
     <div class="toForm">
       <div class="two"><label>시작<input type="date" id="evD" value="${esc(e.d)}"></label><label>종료<input type="date" id="evE" value="${esc(e.e && e.e > e.d ? e.e : e.d)}"></label></div>
-      <label>시간 (선택)<input type="time" id="evT" value="${esc(e.t||'')}"></label>
+      ${(()=>{ const on = e.t==='06:00' && e.te==='21:00'; return `<div class="tmLbl">시간<button type="button" class="t621${on ? ' on' : ''}" id="ev621" aria-pressed="${on}">06~21</button></div><div class="tmRow"><input type="time" id="evT" value="${esc(e.t||'')}"${on ? ' disabled' : ''} aria-label="시작 시간"><span>~</span><input type="time" id="evTE" value="${esc(e.te||'')}"${on ? ' disabled' : ''} aria-label="끝 시간"></div>`; })()}
       <div class="whoRow">${['위원장','사무국','기타'].map(w=> `<button type="button" class="who${e.who===w ? ' on' : ''}" data-who="${w}">${w}</button>`).join('')}</div>
       <label>제목<input type="text" id="evTitle" maxlength="60" value="${esc(e.title||'')}"></label>
       <label>메모 (장소·참석자 등)<textarea id="evMemo" maxlength="1000">${esc(e.memo||'')}</textarea></label>
@@ -313,12 +315,14 @@ function renderEv(){
   $('evX').onclick = close; $('evCancel').onclick = close; $('evScrim').onclick = ev=>{ if(ev.target.id==='evScrim') close(); };
   box.querySelectorAll('[data-who]').forEach(b=> b.onclick = ()=>{ e.who = e.who===b.dataset.who ? '' : b.dataset.who; box.querySelectorAll('[data-who]').forEach(x=> x.classList.toggle('on', x.dataset.who===e.who)); });
   const msg = t=> $('evMsg').textContent = t;
+  $('ev621').onclick = ()=>{ const b = $('ev621'), on = !b.classList.contains('on'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); $('evT').disabled = $('evTE').disabled = on; if(on){ $('evT').value = '06:00'; $('evTE').value = '21:00'; } else $('evT').focus(); };   // 06~21 ↔ 시간 직접 지정
   $('evSave').onclick = async ()=>{
-    const d = $('evD').value, en0 = $('evE').value || d, t = $('evT').value, title = $('evTitle').value.trim(), memo = $('evMemo').value.trim();
+    const d = $('evD').value, en0 = $('evE').value || d, t = $('evT').value, te = t ? $('evTE').value : '', title = $('evTitle').value.trim(), memo = $('evMemo').value.trim();
     if(!d) return msg('시작 날짜를 고르세요.');
+    if(te && en0===d && te <= t) return msg('끝 시간이 시작 시간보다 빨라요.');
     if(en0 < d) return msg('종료 날짜가 시작보다 빨라요.');
     if(!title){ $('evTitle').focus(); return msg('제목을 적어 주세요.'); }
-    const item = {id: e.orig || ('e' + Date.now().toString(36) + Math.random().toString(36).slice(2,6)), d, e: en0 > d ? en0 : '', t, who: e.who || '', title, memo, c: e.c || 'gen'};
+    const item = {id: e.orig || ('e' + Date.now().toString(36) + Math.random().toString(36).slice(2,6)), d, e: en0 > d ? en0 : '', t, who: e.who || '', title, memo, c: e.c || 'gen'}; if(te) item.te = te;
     msg('저장 중…'); $('evSave').disabled = true;
     try{
       const nk = d.slice(0,7);
@@ -401,6 +405,7 @@ function live(ok){ $('live').className = 'live' + (ok ? ' on' : ''); $('live').l
 const allOf = k=> (data[k]||[]).concat(isUnion ? (my[k]||[]).map(e=> Object.assign({}, e, {_my: true})) : []);
 function monthEvents(y, m){ const first = ds(y,m,1); return allOf(key(y,m)).concat(allOf(prevKey(y,m)).filter(e=> end(e) >= first)); }
 function label(d){ const [y,m,dd] = d.split('-').map(Number); return `${m}월 ${dd}일 (${'일월화수목금토'[new Date(y,m-1,dd).getDay()]})`; }
+function tmOf(e, short){ if(!e.t) return ''; const f = x=> short && /:00$/.test(x) ? x.slice(0,2) : x; return e.te ? `${f(e.t)}~${f(e.te)}` : e.t; }   // 06:00~21:00 (달력 칸은 06~21)
 function range(e){ if(end(e)===e.d) return ''; const f = x=>{ const [,mm,dd] = x.split('-').map(Number); return `${mm}/${dd}`; }; return `${f(e.d)} ~ ${f(end(e))}`; }
 function render(){
   const vw = isUnion ? view : 'cal';   // 로그인 전엔 캘린더만(고른 탭은 기억해 둠)
@@ -417,7 +422,7 @@ function render(){
     const D = ds(y,m,d), w = (first + d - 1) % 7, hol = holidays[D];
     const ev = list.filter(e=> on(e, D)).sort((a,b)=> (a.d < b.d ? -1 : a.d > b.d ? 1 : 0) || String(a.t||'').localeCompare(String(b.t||'')));
     cells.push(`<button type="button" class="cell${w===0?' sun':w===6?' sat':''}${hol?' hl':''}${D===today?' today':''}" data-day="${D}"><span class="row"><span class="num">${d}</span>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</span>
-      ${ev.slice(0,3).map(e=> `<span class="ev ${cls(e)}${e._my ? ' mine' : ''}">${e._my ? '◆' : '*'} ${esc(e.title||'')}${e.t && e.d===D ? ` <b>${esc(e.t)}</b>` : ''}</span>`).join('')}${ev.length > 3 ? `<span class="more">+${ev.length-3}개 더</span>` : ''}</button>`);
+      ${ev.slice(0,3).map(e=> `<span class="ev ${cls(e)}${e._my ? ' mine' : ''}">${e._my ? '◆' : '*'} ${esc(e.title||'')}${e.t && e.d===D ? ` <b>${esc(tmOf(e, true))}</b>` : ''}</span>`).join('')}${ev.length > 3 ? `<span class="more">+${ev.length-3}개 더</span>` : ''}</button>`);
   }
   while(cells.length % 7) cells.push('<div class="cell out"></div>');
   $('grid').style.setProperty('--rows', cells.length/7);
@@ -429,10 +434,10 @@ function renderPop(){
   if(!popDay){ $('pop').innerHTML = ''; return; }
   const [y,m] = popDay.split('-').map(Number), ev = monthEvents(y, m).filter(e=> on(e, popDay));
   $('pop').innerHTML = `<div class="scrim" id="scrim"><div class="pop" role="dialog" aria-label="${esc(label(popDay))} 일정"><div class="popHd">${esc(label(popDay))}${holidays[popDay] ? `<span class="hl">${esc(holidays[popDay])}</span>` : ''}<button type="button" class="x" id="x" aria-label="닫기">✕</button></div>
-    <div class="list">${ev.length ? ev.map(e=> `<div class="item ${cls(e)}${e._my ? ' edit mine' : ''}"${e._my ? ` data-eid="${esc(e.id||'')}" data-ek="${esc((e.d||'').slice(0,7))}"` : ''}><span class="bar"></span><div><span class="src">${e._my ? '◆ 내 일정 (Oh Won-il 전용)' : '노동조합 일정 (보기만)'}</span><b>${esc(e.title||'(제목 없음)')}</b>${range(e) || e.t ? `<div class="s">${range(e) ? '📅 ' + esc(range(e)) : ''}${range(e) && e.t ? ' · ' : ''}${e.t ? '🕘 ' + esc(e.t) : ''}${e.who ? ' · ' + esc(e.who) : ''}</div>` : (e.who ? `<div class="s">${esc(e.who)}</div>` : '')}${e.memo ? `<div class="m">${esc(e.memo)}</div>` : ''}</div></div>`).join('') : '<div class="empty">이 날은 일정이 없어요.</div>'}</div>${isUnion ? '<div class="popBtns"><button type="button" class="shBtn pri" id="evAdd">＋ 내 일정 추가</button></div>' : ''}</div></div>`;
+    <div class="list">${ev.length ? ev.map(e=> `<div class="item ${cls(e)}${e._my ? ' edit mine' : ''}"${e._my ? ` data-eid="${esc(e.id||'')}" data-ek="${esc((e.d||'').slice(0,7))}"` : ''}><span class="bar"></span><div><span class="src">${e._my ? '◆ 내 일정 (Oh Won-il 전용)' : '노동조합 일정 (보기만)'}</span><b>${esc(e.title||'(제목 없음)')}</b>${range(e) || e.t ? `<div class="s">${range(e) ? '📅 ' + esc(range(e)) : ''}${range(e) && e.t ? ' · ' : ''}${e.t ? '🕘 ' + esc(tmOf(e)) : ''}${e.who ? ' · ' + esc(e.who) : ''}</div>` : (e.who ? `<div class="s">${esc(e.who)}</div>` : '')}${e.memo ? `<div class="m">${esc(e.memo)}</div>` : ''}</div></div>`).join('') : '<div class="empty">이 날은 일정이 없어요.</div>'}</div>${isUnion ? '<div class="popBtns"><button type="button" class="shBtn pri" id="evAdd">＋ 내 일정 추가</button></div>' : ''}</div></div>`;
   $('x').onclick = ()=>{ popDay = ''; renderPop(); };
   if(isUnion){
-    $('evAdd').onclick = ()=>{ evEdit = {d: popDay, e: '', t: '', who: '', title: '', memo: '', isNew: true}; renderEv(); };
+    $('evAdd').onclick = ()=>{ evEdit = {d: popDay, e: '', t: '06:00', te: '21:00', who: '', title: '', memo: '', isNew: true}; renderEv(); };
     $('pop').querySelectorAll('[data-eid]').forEach(it=> it.onclick = ()=>{ const k = it.dataset.ek, e = (my[k]||[]).find(x=> x.id===it.dataset.eid); if(!e) return; evEdit = Object.assign({}, e, {orig: e.id, origK: k}); renderEv(); });
   }
   $('scrim').onclick = e=>{ if(e.target.id==='scrim'){ popDay = ''; renderPop(); } };
