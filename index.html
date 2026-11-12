@@ -429,7 +429,7 @@ function render(){
     const D = ds(y,m,d), w = (first + d - 1) % 7, hol = holidays[D];
     const ev = list.filter(e=> on(e, D)).sort((a,b)=> (a.d < b.d ? -1 : a.d > b.d ? 1 : 0) || String(a.t||'').localeCompare(String(b.t||'')));
     cells.push(`<button type="button" class="cell${w===0?' sun':w===6?' sat':''}${hol?' hl':''}${D===today?' today':''}" data-day="${D}"><span class="row"><span class="num">${d}</span>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</span>
-      ${ev.slice(0,3).map(e=> `<span class="ev ${cls(e)}${e._my ? ' mine' : ''}">${e._my ? '◆' : '*'} ${esc(e.title||'')}${e.t && e.d===D ? ` <b>${esc(tmOf(e, true))}</b>` : ''}</span>`).join('')}${ev.length > 3 ? `<span class="more">+${ev.length-3}개 더</span>` : ''}</button>`);
+      ${ev.slice(0,3).map(e=> `<span class="ev ${cls(e)}${e._my ? ' mine' : ''}">${e._my ? '◆' : '*'} ${esc(e.title||'')}${e.t && e.d===D && !(e.t==='06:00' && e.te==='21:00') ? ` <b>${esc(tmOf(e, true))}</b>` : ''}</span>`).join('')}${ev.length > 3 ? `<span class="more">+${ev.length-3}개 더</span>` : ''}</button>`);
   }
   while(cells.length % 7) cells.push('<div class="cell out"></div>');
   $('grid').style.setProperty('--rows', cells.length/7);
