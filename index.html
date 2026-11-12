@@ -103,6 +103,8 @@ table.tt{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;t
 .toForm .btns .del{color:#dc2626;margin-right:auto;}
 .item .src{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:1px;}
 .item.mine .src{color:#0369a1;}
+.uNote{background:#fdf2f8;border:1px solid #fbcfe8;color:#9d174d;border-radius:8px;padding:8px 10px;font-size:12.5px;font-weight:600;}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .uNote{background:#3b0a24;border-color:#831843;color:#fbcfe8;}}
 .ev.mine{outline:1.5px dashed #0ea5e9;outline-offset:-1.5px;}
 .item.edit{cursor:pointer;} .item.edit:hover{outline:2px solid var(--pink-l);}
 .popBtns{display:flex;justify-content:flex-end;padding:0 12px 12px;}
@@ -287,7 +289,8 @@ function renderSheet(){
 }
 // ===== 일정 올리기·고치기: 노동조합 캘린더와 같은 곳(meta/cal_YYYY-MM)에 저장 → 양쪽 실시간 연동. UNION 로그인 때만 =====
 let evEdit = null;
-// Oh Won-il에서 넣은 일정은 '내 일정'으로 따로 저장(unionPrivate/owcal_YYYY-MM) → 노동조합 캘린더에는 안 올라감. 노동조합 일정은 여기서 보기만.
+// Oh Won-il에서 새로 넣은 일정은 '내 일정'으로 따로 저장(unionPrivate/owcal_YYYY-MM) → 노동조합 캘린더에는 안 올라감.
+// 노동조합 일정은 UNION 로그인 때 여기서 고치거나 지울 수 있음 → 노동조합 캘린더(meta/cal_YYYY-MM)에 바로 반영.
 const my = {}, myUnsubs = {};
 function watchMy(k){
   if(!F || !isUnion || myUnsubs[k]) return;
@@ -295,14 +298,17 @@ function watchMy(k){
 }
 function resetMy(){ Object.keys(myUnsubs).forEach(k=>{ try{ myUnsubs[k](); }catch(e){} delete myUnsubs[k]; }); Object.keys(my).forEach(k=> delete my[k]); }
 async function calLoad(k){ if(my[k]) return my[k].slice(); const d = await F.getDoc(F.doc(fs, 'unionPrivate', 'owcal_' + k)); return parse(d); }
+async function calLoadU(k){ const d = await F.getDoc(F.doc(fs, 'meta', 'cal_' + k)); return parse(d); }   // 노동조합 일정은 저장 직전에 최신 내용을 다시 읽음(덮어쓰기 방지)
+async function calPutU(k, list){ list.sort((a,b)=> (a.d + (a.t||'')).localeCompare(b.d + (b.t||''))); data[k] = list; await F.setDoc(F.doc(fs, 'meta', 'cal_' + k), {json: JSON.stringify(list), at: Date.now()}); }
 async function calPut(k, list){ list.sort((a,b)=> (a.d + (a.t||'')).localeCompare(b.d + (b.t||''))); my[k] = list; await F.setDoc(F.doc(fs, 'unionPrivate', 'owcal_' + k), {json: JSON.stringify(list), at: Date.now()}); }
 function renderEv(){
   let box = $('evEd');
   if(!evEdit){ if(box) box.remove(); return; }
   if(!box){ box = document.createElement('div'); box.id = 'evEd'; document.body.appendChild(box); }
-  const e = evEdit;
-  box.innerHTML = `<div class="scrim" id="evScrim" style="z-index:60"><div class="pop" role="dialog" aria-label="일정 ${e.isNew ? '추가' : '수정'}"><div class="popHd">${e.isNew ? '◆ 내 일정 추가' : '◆ 내 일정 수정'}<button type="button" class="x" id="evX" aria-label="닫기">✕</button></div>
-    <div class="toForm">
+  const e = evEdit, U = !!e.union;   // U: 노동조합 일정(저장하면 노동조합 캘린더에도 바뀜)
+  const LD = U ? calLoadU : calLoad, PUT = U ? calPutU : calPut;
+  box.innerHTML = `<div class="scrim" id="evScrim" style="z-index:60"><div class="pop" role="dialog" aria-label="일정 ${e.isNew ? '추가' : '수정'}"><div class="popHd">${e.isNew ? '◆ 내 일정 추가' : U ? '노동조합 일정 수정' : '◆ 내 일정 수정'}<button type="button" class="x" id="evX" aria-label="닫기">✕</button></div>
+    <div class="toForm">${U ? '<div class="uNote">저장·삭제하면 <b>노동조합 캘린더에도 똑같이</b> 바뀌어요.</div>' : ''}
       <div class="two"><label>시작<input type="date" id="evD" value="${esc(e.d)}"></label><label>종료<input type="date" id="evE" value="${esc(e.e && e.e > e.d ? e.e : e.d)}"></label></div>
       ${(()=>{ const on = e.t==='06:00' && e.te==='21:00'; return `<div class="tmLbl">시간<button type="button" class="t621${on ? ' on' : ''}" id="ev621" aria-pressed="${on}">06~21</button></div><div class="tmRow"><input type="time" id="evT" value="${esc(e.t||'')}"${on ? ' disabled' : ''} aria-label="시작 시간"><span>~</span><input type="time" id="evTE" value="${esc(e.te||'')}"${on ? ' disabled' : ''} aria-label="끝 시간"></div>`; })()}
       <div class="whoRow">${['위원장','사무국','기타'].map(w=> `<button type="button" class="who${e.who===w ? ' on' : ''}" data-who="${w}">${w}</button>`).join('')}</div>
@@ -322,19 +328,20 @@ function renderEv(){
     if(te && en0===d && te <= t) return msg('끝 시간이 시작 시간보다 빨라요.');
     if(en0 < d) return msg('종료 날짜가 시작보다 빨라요.');
     if(!title){ $('evTitle').focus(); return msg('제목을 적어 주세요.'); }
-    const item = {id: e.orig || ('e' + Date.now().toString(36) + Math.random().toString(36).slice(2,6)), d, e: en0 > d ? en0 : '', t, who: e.who || '', title, memo, c: e.c || 'gen'}; if(te) item.te = te;
+    const base = {}; Object.keys(e).forEach(x=>{ if(!['orig','origK','isNew','union','_my','te'].includes(x)) base[x] = e[x]; });   // 노동조합 쪽에만 있는 다른 항목은 그대로 둠
+    const item = Object.assign(base, {id: e.orig || ('e' + Date.now().toString(36) + Math.random().toString(36).slice(2,6)), d, e: en0 > d ? en0 : '', t, who: e.who || '', title, memo, c: e.c || 'gen'}); if(te) item.te = te;
     msg('저장 중…'); $('evSave').disabled = true;
     try{
       const nk = d.slice(0,7);
-      if(e.origK && e.origK !== nk) await calPut(e.origK, (await calLoad(e.origK)).filter(x=> x.id!==item.id));
-      const list = (await calLoad(nk)).filter(x=> x.id!==item.id); list.push(item); await calPut(nk, list);
+      if(e.origK && e.origK !== nk) await PUT(e.origK, (await LD(e.origK)).filter(x=> x.id!==item.id));
+      const list = (await LD(nk)).filter(x=> x.id!==item.id); list.push(item); await PUT(nk, list);
       close(); popDay = d; render();
     }catch(err){ $('evSave').disabled = false; msg('저장하지 못했어요: ' + ((err && err.code) || '오류')); }
   };
   if($('evDel')) $('evDel').onclick = async ()=>{
-    if(!confirm('이 일정을 지울까요?')) return;
+    if(!confirm(U ? '이 노동조합 일정을 지울까요?\n노동조합 캘린더에서도 지워져요.' : '이 일정을 지울까요?')) return;
     msg('삭제 중…');
-    try{ await calPut(e.origK, (await calLoad(e.origK)).filter(x=> x.id!==e.orig)); close(); render(); }
+    try{ await PUT(e.origK, (await LD(e.origK)).filter(x=> x.id!==e.orig)); close(); render(); }
     catch(err){ msg('지우지 못했어요: ' + ((err && err.code) || '오류')); }
   };
 }
@@ -434,11 +441,11 @@ function renderPop(){
   if(!popDay){ $('pop').innerHTML = ''; return; }
   const [y,m] = popDay.split('-').map(Number), ev = monthEvents(y, m).filter(e=> on(e, popDay));
   $('pop').innerHTML = `<div class="scrim" id="scrim"><div class="pop" role="dialog" aria-label="${esc(label(popDay))} 일정"><div class="popHd">${esc(label(popDay))}${holidays[popDay] ? `<span class="hl">${esc(holidays[popDay])}</span>` : ''}<button type="button" class="x" id="x" aria-label="닫기">✕</button></div>
-    <div class="list">${ev.length ? ev.map(e=> `<div class="item ${cls(e)}${e._my ? ' edit mine' : ''}"${e._my ? ` data-eid="${esc(e.id||'')}" data-ek="${esc((e.d||'').slice(0,7))}"` : ''}><span class="bar"></span><div><span class="src">${e._my ? '◆ 내 일정 (Oh Won-il 전용)' : '노동조합 일정 (보기만)'}</span><b>${esc(e.title||'(제목 없음)')}</b>${range(e) || e.t ? `<div class="s">${range(e) ? '📅 ' + esc(range(e)) : ''}${range(e) && e.t ? ' · ' : ''}${e.t ? '🕘 ' + esc(tmOf(e)) : ''}${e.who ? ' · ' + esc(e.who) : ''}</div>` : (e.who ? `<div class="s">${esc(e.who)}</div>` : '')}${e.memo ? `<div class="m">${esc(e.memo)}</div>` : ''}</div></div>`).join('') : '<div class="empty">이 날은 일정이 없어요.</div>'}</div>${isUnion ? '<div class="popBtns"><button type="button" class="shBtn pri" id="evAdd">＋ 내 일정 추가</button></div>' : ''}</div></div>`;
+    <div class="list">${ev.length ? ev.map(e=> `<div class="item ${cls(e)}${e._my ? ' edit mine' : isUnion ? ' edit' : ''}"${e._my || isUnion ? ` data-eid="${esc(e.id||'')}" data-ek="${esc((e.d||'').slice(0,7))}" data-eu="${e._my ? '' : '1'}"` : ''}><span class="bar"></span><div><span class="src">${e._my ? '◆ 내 일정 (Oh Won-il 전용) ✎' : isUnion ? '노동조합 일정 ✎ 눌러서 수정' : '노동조합 일정 (보기만)'}</span><b>${esc(e.title||'(제목 없음)')}</b>${range(e) || e.t ? `<div class="s">${range(e) ? '📅 ' + esc(range(e)) : ''}${range(e) && e.t ? ' · ' : ''}${e.t ? '🕘 ' + esc(tmOf(e)) : ''}${e.who ? ' · ' + esc(e.who) : ''}</div>` : (e.who ? `<div class="s">${esc(e.who)}</div>` : '')}${e.memo ? `<div class="m">${esc(e.memo)}</div>` : ''}</div></div>`).join('') : '<div class="empty">이 날은 일정이 없어요.</div>'}</div>${isUnion ? '<div class="popBtns"><button type="button" class="shBtn pri" id="evAdd">＋ 내 일정 추가</button></div>' : ''}</div></div>`;
   $('x').onclick = ()=>{ popDay = ''; renderPop(); };
   if(isUnion){
     $('evAdd').onclick = ()=>{ evEdit = {d: popDay, e: '', t: '06:00', te: '21:00', who: '', title: '', memo: '', isNew: true}; renderEv(); };
-    $('pop').querySelectorAll('[data-eid]').forEach(it=> it.onclick = ()=>{ const k = it.dataset.ek, e = (my[k]||[]).find(x=> x.id===it.dataset.eid); if(!e) return; evEdit = Object.assign({}, e, {orig: e.id, origK: k}); renderEv(); });
+    $('pop').querySelectorAll('[data-eid]').forEach(it=> it.onclick = ()=>{ const k = it.dataset.ek, u = it.dataset.eu==='1', e = ((u ? data[k] : my[k])||[]).find(x=> x.id===it.dataset.eid); if(!e) return; evEdit = Object.assign({}, e, {orig: e.id, origK: k, union: u}); renderEv(); });   // 내 일정·노동조합 일정 모두 눌러서 수정
   }
   $('scrim').onclick = e=>{ if(e.target.id==='scrim'){ popDay = ''; renderPop(); } };
 }
